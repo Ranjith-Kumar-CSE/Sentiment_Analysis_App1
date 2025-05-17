@@ -166,66 +166,64 @@ def fig_to_bytes(fig):
 
 # Main app
 def main():
-    st.title("📊 Sentiment Analysis App")
-    st.markdown("""
-    Use the tabs below to analyze a single text post or a CSV file containing social media posts.
-    Adjust sentiment thresholds as needed. The app uses VADER to analyze sentiments and display results.
-    Download results and visualizations as needed.
-    """)
+    try:
+        st.title("📊 Sentiment Analysis App")
+        st.markdown("""
+        Use the tabs below to analyze a single text post or a CSV file containing social media posts.
+        Adjust sentiment thresholds as needed. The app uses VADER to analyze sentiments and display results.
+        Download results and visualizations as needed.
+        """)
 
-    # Initialize session state for CSV analysis
-    if 'csv_analyzed' not in st.session_state:
-        st.session_state.csv_analyzed = False
-    if 'analysis_data' not in st.session_state:
-        st.session_state.analysis_data = None
-    if 'visualizations' not in st.session_state:
-        st.session_state.visualizations = None
+        # Initialize session state for visualizations
+        if 'visualizations' not in st.session_state:
+            st.session_state.visualizations = None
+        if 'analysis_data' not in st.session_state:
+            st.session_state.analysis_data = None
 
-    # Create tabs
-    text_tab, csv_tab = st.tabs(["Analyze Text", "Analyze CSV File"])
+        # Create tabs
+        text_tab, csv_tab = st.tabs(["Analyze Text", "Analyze CSV File"])
 
-    # Text Analysis Tab
-    with text_tab:
-        st.header("Analyze a Single Text Post")
-        st.markdown("Enter a text post and adjust thresholds to analyze its sentiment.")
+        # Text Analysis Tab
+        with text_tab:
+            st.header("Analyze a Single Text Post")
+            st.markdown("Enter a text post and adjust thresholds to analyze its sentiment.")
 
-        # Inputs
-        single_text = st.text_area("Enter a Text Post", height=100)
-        pos_threshold_text = st.slider("Positive Sentiment Threshold", 0.0, 1.0, 0.5, 0.05, key="text_pos")
-        neg_threshold_text = st.slider("Negative Sentiment Threshold", -1.0, 0.0, -0.5, 0.05, key="text_neg")
-        analyze_text_button = st.button("Analyze Text")
+            # Inputs
+            single_text = st.text_area("Enter a Text Post", height=100)
+            pos_threshold_text = st.slider("Positive Sentiment Threshold", 0.0, 1.0, 0.5, 0.05, key="text_pos")
+            neg_threshold_text = st.slider("Negative Sentiment Threshold", -1.0, 0.0, -0.5, 0.05, key="text_neg")
+            analyze_text_button = st.button("Analyze Text")
 
-        # Handle text analysis
-        if analyze_text_button:
-            if single_text.strip():
-                with st.spinner("Analyzing text..."):
-                    st.subheader("Text Analysis Result")
-                    result = analyze_single_text(single_text, pos_threshold_text, neg_threshold_text)
-                    st.text_area("Text Sentiment", result, height=100)
-                    # Download text result
-                    st.download_button(
-                        label="Download Text Analysis Result",
-                        data=result,
-                        file_name="text_analysis_result.txt",
-                        mime="text/plain"
-                    )
-            else:
-                st.error("Please enter some text to analyze.")
+            # Handle text analysis
+            if analyze_text_button:
+                if single_text.strip():
+                    with st.spinner("Analyzing text..."):
+                        st.subheader("Text Analysis Result")
+                        result = analyze_single_text(single_text, pos_threshold_text, neg_threshold_text)
+                        st.text_area("Text Sentiment", result, height=100)
+                        # Download text result
+                        st.download_button(
+                            label="Download Text Analysis Result",
+                            data=result,
+                            file_name="text_analysis_result.txt",
+                            mime="text/plain"
+                        )
+                else:
+                    st.error("Please enter some text to analyze.")
 
-    # CSV Analysis Tab
-    with csv_tab:
-        st.header("Analyze CSV File")
-        st.markdown("Upload a CSV file, specify the text column, and adjust thresholds to analyze sentiments.")
+        # CSV Analysis Tab
+        with csv_tab:
+            st.header("Analyze CSV File")
+            st.markdown("Upload a CSV file, specify the text column, and adjust thresholds to analyze sentiments.")
 
-        # Inputs
-        uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-        text_column = st.text_input("Text Column Name", value="text")
-        pos_threshold_csv = st.slider("Positive Sentiment Threshold", 0.0, 1.0, 0.5, 0.05, key="csv_pos")
-        neg_threshold_csv = st.slider("Negative Sentiment Threshold", -1.0, 0.0, -0.5, 0.05, key="csv_neg")
-        analyze_button = st.button("Analyze CSV")
+            # Inputs
+            uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+            text_column = st.text_input("Text Column Name", value="text")
+            pos_threshold_csv = st.slider("Positive Sentiment Threshold", 0.0, 1.0, 0.5, 0.05, key="csv_pos")
+            neg_threshold_csv = st.slider("Negative Sentiment Threshold", -1.0, 0.0, -0.5, 0.05, key="csv_neg")
+            analyze_button = st.button("Analyze CSV")
 
-        # Handle CSV analysis
-        if (analyze_button and uploaded_file is not None) or st.session_state.csv_analyzed:
+            # Handle CSV analysis
             if analyze_button and uploaded_file is not None:
                 with st.spinner("Analyzing posts..."):
                     posts, true_labels, df = read_posts(uploaded_file, text_column, pos_threshold_csv, neg_threshold_csv)
@@ -246,8 +244,7 @@ def main():
                             true_labels, predicted_labels, compound_scores
                         )
 
-                        # Store data in session state
-                        st.session_state.csv_analyzed = True
+                        # Store analysis data and visualizations in session state
                         st.session_state.analysis_data = {
                             'results_text': results_text,
                             'analysis_data': analysis_data,
@@ -371,5 +368,9 @@ ROC AUC: {st.session_state.analysis_data['roc_auc']:.3f}
                         mime="image/png"
                     )
 
-        elif analyze_button and uploaded_file is None:
-            st.error("Please upload a CSV file.")
+            elif analyze_button and uploaded_file is None:
+                st.error("Please upload a CSV file.")
+
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        st.write("Please check the terminal for detailed error information or contact support.")

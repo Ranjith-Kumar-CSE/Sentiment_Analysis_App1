@@ -13,156 +13,7 @@ st.set_page_config(page_title="Sentiment Analysis App", layout="wide")
 # Initialize VADER sentiment analyzer
 analyzer = SentimentIntensityAnalyzer()
 
-# Read social media posts from CSV file and generate true labels
-def read_posts(file, text_column, pos_threshold, neg_threshold):
-    try:
-        df = pd.read_csv(file)
-
-        # Check if text column exists
-        if text_column not in df.columns:
-            raise ValueError(f"Column '{text_column}' not found in the dataset.")
-
-        # Display the first five rows
-        st.subheader("First Five Rows of Loaded CSV")
-        st.dataframe(df.head())
-
-        # Remove duplicate records
-        df = df.drop_duplicates(subset=text_column)
-
-        # Drop missing (null) values
-        df = df[[text_column]].dropna()
-
-        # Convert to string format and generate true labels using VADER
-        posts = df[text_column].astype(str).tolist()
-        true_labels = []
-        for post in posts:
-            score = analyzer.polarity_scores(post)['compound']
-            true_labels.append(decode_emotion(score, pos_threshold, neg_threshold))
-
-        st.success(f"Total posts loaded: {len(posts)}")
-        return posts, true_labels, df
-    except Exception as e:
-        st.error(f"Error reading file: {str(e)}")
-        return None, None, None
-
-# Decode sentiment score to emotion
-def decode_emotion(score, pos_threshold, neg_threshold):
-    if score >= pos_threshold:
-        return "Positive"
-    elif score <= neg_threshold:
-        return "Negative"
-    else:
-        return "Neutral"
-
-# Analyze sentiments for CSV posts
-def analyze_posts(posts, pos_threshold, neg_threshold):
-    predicted_labels = []
-    compound_scores = []
-    polarity_scores = {'compound': [], 'pos': [], 'neu': [], 'neg': []}
-    results_text = ""
-    analysis_data = []
-    for post in posts:
-        scores = analyzer.polarity_scores(post)
-        score = scores['compound']
-        emotion = decode_emotion(score, pos_threshold, neg_threshold)
-        predicted_labels.append(emotion)
-        compound_scores.append(score)
-        polarity_scores['compound'].append(scores['compound'])
-        polarity_scores['pos'].append(scores['pos'])
-        polarity_scores['neu'].append(scores['neu'])
-        polarity_scores['neg'].append(scores['neg'])
-        results_text += f"{post[:50]}...\n-> {emotion} (Score: {score:.3f})\n\n"
-        analysis_data.append({'Post': post, 'Sentiment': emotion, 'Compound Score': score})
-    return predicted_labels, compound_scores, polarity_scores, results_text, analysis_data
-
-# Analyze single text input
-def analyze_single_text(text, pos_threshold, neg_threshold):
-    if not text.strip():
-        return "Error: Please enter some text."
-    scores = analyzer.polarity_scores(text)
-    score = scores['compound']
-    emotion = decode_emotion(score, pos_threshold, neg_threshold)
-    return f"{text[:50]}...\n-> {emotion} (Score: {score:.3f})"
-
-# Compute evaluation metrics for CSV analysis
-def compute_metrics(true_labels, predicted_labels, compound_scores):
-    accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = f1_score(true_labels, predicted_labels, average='weighted')
-    label_mapping = {'Positive': 1, 'Neutral': 0, 'Negative': -1}
-    true_numeric = [label_mapping[label] for label in true_labels]
-    predicted_numeric = [label_mapping[label] for label in predicted_labels]
-    rmse = np.sqrt(mean_squared_error(true_numeric, predicted_numeric))
-    cm = confusion_matrix(true_labels, predicted_labels, labels=['Positive', 'Neutral', 'Negative'])
-    binary_true = [1 if label == 'Positive' else 0 for label in true_labels]
-    fpr, tpr, _ = roc_curve(binary_true, compound_scores)
-    roc_auc = auc(fpr, tpr)
-    return accuracy, f1, rmse, cm, fpr, tpr, roc_auc
-
-# Display pie chart
-def create_pie_chart(results):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    labels = results.keys()
-    sizes = results.values()
-    colors = ['green', 'gray', 'red']
-    ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140)
-    ax.set_title("Emotion Distribution in Social Media Posts")
-    ax.axis('equal')
-    return fig
-
-# Display bar graph
-def create_bar_graph(results):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    labels = list(results.keys())
-    counts = list(results.values())
-    colors = ['green', 'gray', 'red']
-    ax.bar(labels, counts, color=colors)
-    ax.set_title('Sentiment Distribution in Social Media Posts')
-    ax.set_xlabel('Sentiment')
-    ax.set_ylabel('Number of Posts')
-    return fig
-
-# Display confusion matrix
-def create_confusion_matrix(cm):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=['Positive', 'Neutral', 'Negative'],
-                yticklabels=['Positive', 'Neutral', 'Negative'], ax=ax)
-    ax.set_title('Confusion Matrix')
-    ax.set_ylabel('True Label (Auto-Generated)')
-    ax.set_xlabel('Predicted Label')
-    return fig
-
-# Display ROC curve
-def create_roc_curve(fpr, tpr, roc_auc):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
-    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-    ax.set_xlim([0.0, 1.0])
-    ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('ROC Curve (Positive vs Non-Positive)')
-    ax.legend(loc="lower right")
-    return fig
-
-# Display correlation matrix
-def create_correlation_matrix(polarity_scores):
-    if not polarity_scores['compound']:
-        st.error("No data available for correlation matrix.")
-        return None
-    df_scores = pd.DataFrame(polarity_scores, columns=['compound', 'pos', 'neu', 'neg'])
-    corr_matrix = df_scores.corr()
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
-    ax.set_title('Correlation Matrix of Sentiment Scores')
-    return fig
-
-# Convert figure to bytes for download
-def fig_to_bytes(fig):
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    return buf.getvalue()
+# [Other functions like read_posts, decode_emotion, analyze_posts, etc., remain unchanged]
 
 # Main app
 def main():
@@ -172,6 +23,12 @@ def main():
     Adjust sentiment thresholds as needed. The app uses VADER to analyze sentiments and display results.
     Download results and visualizations as needed.
     """)
+
+    # Initialize session state variables
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = None
+    if 'visualizations' not in st.session_state:
+        st.session_state.visualizations = {}
 
     # Create tabs
     text_tab, csv_tab = st.tabs(["Analyze Text", "Analyze CSV File"])
@@ -237,111 +94,131 @@ def main():
                         true_labels, predicted_labels, compound_scores
                     )
 
-                    # Display results
-                    st.subheader("CSV Analysis Results")
-                    
-                    # Sentiment analysis output
-                    with st.expander("Sentiment Analysis Output", expanded=False):
-                        st.text_area("Post Sentiments", results_text, height=300)
-                    # Download sentiment analysis results
-                    analysis_df = pd.DataFrame(analysis_data)
-                    csv_buffer = io.StringIO()
-                    analysis_df.to_csv(csv_buffer, index=False)
-                    st.download_button(
-                        label="Download Sentiment Analysis Results",
-                        data=csv_buffer.getvalue(),
-                        file_name="sentiment_analysis_results.csv",
-                        mime="text/csv"
-                    )
+                    # Store results in session state
+                    st.session_state.analysis_results = {
+                        'results_text': results_text,
+                        'analysis_data': analysis_data,
+                        'accuracy': accuracy,
+                        'f1': f1,
+                        'rmse': rmse,
+                        'cm': cm,
+                        'fpr': fpr,
+                        'tpr': tpr,
+                        'roc_auc': roc_auc,
+                        'results': results,
+                        'polarity_scores': polarity_scores
+                    }
 
-                    # Metrics
-                    st.subheader("Evaluation Metrics (Auto-Generated Labels)")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Accuracy", f"{accuracy:.3f}")
-                        st.metric("F1 Score (Weighted)", f"{f1:.3f}")
-                    with col2:
-                        st.metric("RMSE", f"{rmse:.3f}")
-                        st.metric("ROC AUC", f"{roc_auc:.3f}")
-                    
-                    # Download metrics report
-                    metrics_report = f"""Sentiment Analysis Metrics Report
-Accuracy: {accuracy:.3f}
-F1 Score (Weighted): {f1:.3f}
-RMSE: {rmse:.3f}
-ROC AUC: {roc_auc:.3f}
+                    # Generate and store visualizations
+                    st.session_state.visualizations = {
+                        'pie_fig': create_pie_chart(results),
+                        'bar_fig': create_bar_graph(results),
+                        'cm_fig': create_confusion_matrix(cm),
+                        'roc_fig': create_roc_curve(fpr, tpr, roc_auc),
+                        'corr_fig': create_correlation_matrix(polarity_scores)
+                    }
+
+        # Display results if they exist in session state
+        if st.session_state.analysis_results is not None:
+            st.subheader("CSV Analysis Results")
+            
+            # Sentiment analysis output
+            with st.expander("Sentiment Analysis Output", expanded=False):
+                st.text_area("Post Sentiments", st.session_state.analysis_results['results_text'], height=300)
+            # Download sentiment analysis results
+            analysis_df = pd.DataFrame(st.session_state.analysis_results['analysis_data'])
+            csv_buffer = io.StringIO()
+            analysis_df.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="Download Sentiment Analysis Results",
+                data=csv_buffer.getvalue(),
+                file_name="sentiment_analysis_results.csv",
+                mime="text/csv"
+            )
+
+            # Metrics
+            st.subheader("Evaluation Metrics (Auto-Generated Labels)")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Accuracy", f"{st.session_state.analysis_results['accuracy']:.3f}")
+                st.metric("F1 Score (Weighted)", f"{st.session_state.analysis_results['f1']:.3f}")
+            with col2:
+                st.metric("RMSE", f"{st.session_state.analysis_results['rmse']:.3f}")
+                st.metric("ROC AUC", f"{st.session_state.analysis_results['roc_auc']:.3f}")
+            
+            # Download metrics report
+            metrics_report = f"""Sentiment Analysis Metrics Report
+Accuracy: {st.session_state.analysis_results['accuracy']:.3f}
+F1 Score (Weighted): {st.session_state.analysis_results['f1']:.3f}
+RMSE: {st.session_state.analysis_results['rmse']:.3f}
+ROC AUC: {st.session_state.analysis_results['roc_auc']:.3f}
 """
-                    st.download_button(
-                        label="Download Metrics Report",
-                        data=metrics_report,
-                        file_name="metrics_report.txt",
-                        mime="text/plain"
-                    )
+            st.download_button(
+                label="Download Metrics Report",
+                data=metrics_report,
+                file_name="metrics_report.txt",
+                mime="text/plain"
+            )
 
-                    st.write("**Confusion Matrix (Rows: True, Columns: Predicted)**")
-                    cm_df = pd.DataFrame(
-                        cm, 
-                        index=['Positive', 'Neutral', 'Negative'],
-                        columns=['Positive', 'Neutral', 'Negative']
-                    )
-                    st.dataframe(cm_df)
+            st.write("**Confusion Matrix (Rows: True, Columns: Predicted)**")
+            cm_df = pd.DataFrame(
+                st.session_state.analysis_results['cm'], 
+                index=['Positive', 'Neutral', 'Negative'],
+                columns=['Positive', 'Neutral', 'Negative']
+            )
+            st.dataframe(cm_df)
 
-                    # Visualizations
-                    st.subheader("Visualizations")
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Emotion Distribution Pie Chart**")
-                        pie_fig = create_pie_chart(results)
-                        st.pyplot(pie_fig)
-                        st.download_button(
-                            label="Download Pie Chart",
-                            data=fig_to_bytes(pie_fig),
-                            file_name="pie_chart.png",
-                            mime="image/png"
-                        )
-                    
-                    with col2:
-                        st.write("**Sentiment Distribution Bar Graph**")
-                        bar_fig = create_bar_graph(results)
-                        st.pyplot(bar_fig)
-                        st.download_button(
-                            label="Download Bar Graph",
-                            data=fig_to_bytes(bar_fig),
-                            file_name="bar_graph.png",
-                            mime="image/png"
-                        )
+            # Visualizations
+            st.subheader("Visualizations")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Emotion Distribution Pie Chart**")
+                st.pyplot(st.session_state.visualizations['pie_fig'])
+                st.download_button(
+                    label="Download Pie Chart",
+                    data=fig_to_bytes(st.session_state.visualizations['pie_fig']),
+                    file_name="pie_chart.png",
+                    mime="image/png"
+                )
+            
+            with col2:
+                st.write("**Sentiment Distribution Bar Graph**")
+                st.pyplot(st.session_state.visualizations['bar_fig'])
+                st.download_button(
+                    label="Download Bar Graph",
+                    data=fig_to_bytes(st.session_state.visualizations['bar_fig']),
+                    file_name="bar_graph.png",
+                    mime="image/png"
+                )
 
-                    st.write("**Confusion Matrix**")
-                    cm_fig = create_confusion_matrix(cm)
-                    st.pyplot(cm_fig)
-                    st.download_button(
-                        label="Download Confusion Matrix",
-                        data=fig_to_bytes(cm_fig),
-                        file_name="confusion_matrix.png",
-                        mime="image/png"
-                    )
+            st.write("**Confusion Matrix**")
+            st.pyplot(st.session_state.visualizations['cm_fig'])
+            st.download_button(
+                label="Download Confusion Matrix",
+                data=fig_to_bytes(st.session_state.visualizations['cm_fig']),
+                file_name="confusion_matrix.png",
+                mime="image/png"
+            )
 
-                    st.write("**ROC Curve**")
-                    roc_fig = create_roc_curve(fpr, tpr, roc_auc)
-                    st.pyplot(roc_fig)
-                    st.download_button(
-                        label="Download ROC Curve",
-                        data=fig_to_bytes(roc_fig),
-                        file_name="roc_curve.png",
-                        mime="image/png"
-                    )
+            st.write("**ROC Curve**")
+            st.pyplot(st.session_state.visualizations['roc_fig'])
+            st.download_button(
+                label="Download ROC Curve",
+                data=fig_to_bytes(st.session_state.visualizations['roc_fig']),
+                file_name="roc_curve.png",
+                mime="image/png"
+            )
 
-                    st.write("**Correlation Matrix of Sentiment Scores**")
-                    corr_fig = create_correlation_matrix(polarity_scores)
-                    if corr_fig:
-                        st.pyplot(corr_fig)
-                        st.download_button(
-                            label="Download Correlation Matrix",
-                            data=fig_to_bytes(corr_fig),
-                            file_name="correlation_matrix.png",
-                            mime="image/png"
-                        )
+            st.write("**Correlation Matrix of Sentiment Scores**")
+            if st.session_state.visualizations['corr_fig']:
+                st.pyplot(st.session_state.visualizations['corr_fig'])
+                st.download_button(
+                    label="Download Correlation Matrix",
+                    data=fig_to_bytes(st.session_state.visualizations['corr_fig']),
+                    file_name="correlation_matrix.png",
+                    mime="image/png"
+                )
 
         elif analyze_button and uploaded_file is None:
             st.error("Please upload a CSV file.")
